@@ -16,6 +16,9 @@ namespace Packets {
         public:
             PacketQueue() = default;
             void newCycle();
+            void add(Packet* packet);
             Packet* next();
+            void addPacketsFromList(std::list<Packet*>* packets);
+            void removePacketsFromIdentifierList(const std::list<uint32_t>& identifiers);
     };
 }

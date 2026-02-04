@@ -1,37 +1,60 @@
 #include "Node.hpp"
 
-namespace Node {
-    
-    nodeState_t nodeState;
-    
-    void addReceivedDataToRxQueue(LoRaHelper::SX1262_helper &radio){
+
+namespace Node{    
+    //nodeState_t nodeState;
+    //Packets::PacketQueue sendQueue;
+    //Packets::PacketQueue receiveQueue;
+
+    // Pre-transmit callback to update time-sensitive data right before transmission
+    void Node::preTransmitCallback(LoRaHelper::SX1262_helper* callingRadio, byte* data, uint8_t length) {
+        Packets::PacketHead_t* head = (Packets::PacketHead_t*)data;
+        byte* payloadData = data + sizeof(Packets::PacketHead_t);
+        
+        time_t currentTime = TimeUtils::getCurrentTime();
+        
+        // Update timestamp and time-on-air based on packet type
+        if (head->packetType == Packets::PACKET_TYPE_ADVERTISE) {
+            Packets::AdvertisePacketContent_t* content = (Packets::AdvertisePacketContent_t*)payloadData;
+            content->timeSyncInfo.remoteNodeTime = currentTime;
+            content->timeSyncInfo.estimatedTimeOnAirUs = callingRadio->getTimeOnAir(length);
+            S_DEBUGF("Pre-TX: Updated Advertise packet timestamp to %ld, ToA: %d ms\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
+        } 
+        else if (head->packetType == Packets::PACKET_TYPE_ACK) {
+            Packets::AckPacketContent_t* content = (Packets::AckPacketContent_t*)payloadData;
+            content->timeSyncInfo.remoteNodeTime = currentTime;
+            content->timeSyncInfo.estimatedTimeOnAirUs = callingRadio->getTimeOnAir(length);
+            S_DEBUGF("Pre-TX: Updated Ack-Packet timestamp to %ld, ToA: %d ms\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
+        }
+    }
+
+    void Node::addReceivedDataToRxQueue(LoRaHelper::SX1262_helper &radio){
         uint8_t outLength = 0;
         byte* data = radio.popDataFromInstanceBuffer(outLength);
         Packets::Packet* receivedPacket = new Packets::Packet(outLength, data, radio.getRSSI(), radio.getSNR());
-        Packets::receiveQueue[receivedPacket->getPacketIdentifier()] = receivedPacket;
-        S_DEBUGF("Added received packet (%d Bytes) ID %d from %d to receive queue\n", outLength, receivedPacket->head.packetId, receivedPacket->head.senderId);
+        receiveQueue[receivedPacket->getPacketIdentifier()] = receivedPacket;
+        S_DEBUGF("Added received packet (%d Bytes) ID %04X from %04X to receive queue\n", outLength, receivedPacket->head.packetId, receivedPacket->head.senderId);
         delete[] data;
         data = nullptr;
         return;
     }
 
-    void sendPacket(LoRaHelper::SX1262_helper &radio, const Packets::Packet* packet){
+    void Node::sendPacket(LoRaHelper::SX1262_helper &radio, const Packets::Packet* packet){
         byte* data = new byte[sizeof(Packets::PacketHead_t) + packet->head.dataLength];
         memcpy(data, &(packet->head), sizeof(Packets::PacketHead_t));
         ((Packets::PacketHead_t*)data)->data = nullptr;
         memcpy(data + sizeof(Packets::PacketHead_t), packet->head.data, packet->head.dataLength);
-
-        S_DEBUGF("Starting polite transmit of packet %.8X\n", packet->getPacketIdentifier());
+        S_DEBUGF("Starting polite transmit of packet 0x%08X to 0x%04X\n", packet->getPacketIdentifier(), packet->head.receiverId);
         
-        if (!radio.startPoliteTransmit((const byte*) data, sizeof(Packets::PacketHead_t) + packet->head.dataLength)){
-            S_DEBUGF("Failed to start polite transmit of packet ID %d\n", packet->head.packetId);
+        if (!radio.startPoliteTransmit((const byte*) data, sizeof(Packets::PacketHead_t) + packet->head.dataLength, preTransmitCallback)){
+            S_DEBUGF("Failed to start polite transmit of packet ID %04X\n", packet->head.packetId);
         } else {
             nodeState = NODE_STATE_SENDING;
         }
         return;
     }
 
-    bool checkAndHandleRadioIRQ(LoRaHelper::SX1262_helper &radio, Packets::Packet* &currentlySendingPacket){
+    bool Node::handleRadioIRQ(LoRaHelper::SX1262_helper &radio){
         if (!radio.isInterruptPending()) {
             return false;
         }
@@ -40,42 +63,35 @@ namespace Node {
         switch (progress){
             case LoRaHelper::PROGRESS_RX_COMPLETE: {
                 Node::addReceivedDataToRxQueue(radio);
-                nodeState = Node::NODE_STATE_IDLE;
+                nodeState = NODE_STATE_IDLE;
                 break;
             }
 
-            case LoRaHelper::PROGRESS_TX: {
-                // still transmitting, do nothing
-                break;
-            }
-
+            case LoRaHelper::PROGRESS_TX: break; // still transmitting, do nothing
+            
             case LoRaHelper::ERR_TX_RECEIVED_PACKET: {
                 Node::addReceivedDataToRxQueue(radio);
-                nodeState = Node::NODE_STATE_IDLE;
+                nodeState = NODE_STATE_IDLE;
                 break;
             }
         
             case LoRaHelper::ERR_TX_CAD_DETECTED: {
                 S_DEBUGF("Channel activity detected during polite send, aborting transmission.\n");
-                nodeState = Node::NODE_STATE_RECEIVING;
+                nodeState = NODE_STATE_RECEIVING;
                 break;
             }
         
             case LoRaHelper::PROGRESS_TX_COMPLETE: {
-                S_DEBUGF("Transmission of packet %.4X complete.\n", currentlySendingPacket->getPacketIdentifier());
-                if (currentlySendingPacket->head.packetType == Packets::PACKET_TYPE_ACK){
-                    Packets::sendQueue.erase(currentlySendingPacket->getPacketIdentifier());
+                S_DEBUGF("Transmission of packet 0x%08X complete.\n", currentlySendingPacket->getPacketIdentifier());
+                if (!currentlySendingPacket->isAckExpected())
+                {
+                    sendQueue.erase(currentlySendingPacket->getPacketIdentifier());
                     delete currentlySendingPacket;
                     currentlySendingPacket = nullptr;
-                    nodeState = Node::NODE_STATE_IDLE;
-                    break;
                 } else {
-                    currentlySendingPacket->hasBeenSentInCycle = true;
-                    currentlySendingPacket->hasBeenSent = true;
-                    currentlySendingPacket->sendAttempts++;
-                    currentlySendingPacket->lastSendTime = millis();
+                    currentlySendingPacket->markAsSent();
                 }
-                nodeState = Node::NODE_STATE_IDLE;
+                nodeState = NODE_STATE_IDLE;
                 break;
             }
 
@@ -87,36 +103,54 @@ namespace Node {
         return true;
     }
 
-    bool checkAndHandleIdleState(LoRaHelper::SX1262_helper &radio, Packets::Packet* &currentlySendingPacket){
-        LoRaHelper::radioState_t currentRadioState = radio.getCurrentState();
-        if (nodeState != Node::NODE_STATE_IDLE) return false;
+    bool Node::sendNextPacketOrStartReceive(LoRaHelper::SX1262_helper &radio){ //if node is in idle, try to send next packet in queue or start receiving if queue is empty
+        if (nodeState != NODE_STATE_IDLE) return false;
 
-        auto nextPacket = Packets::sendQueue.next(); 
+        auto nextPacket = sendQueue.next();
         if (nextPacket != nullptr){
             currentlySendingPacket = nextPacket;
             Node::sendPacket(radio, currentlySendingPacket);
             return true;
         }
+        LoRaHelper::radioState_t currentRadioState = radio.getCurrentState();
         if (currentRadioState == LoRaHelper::STATE_IDLE){
-            S_DEBUGF("Node is idle, starting receive...\n");
+            S_DEBUGF("Node and radio are idle, starting receive...\n");
             radio.startIdleReceive();
             return true;
         }
         if (currentRadioState != LoRaHelper::STATE_RX_RECEIVING){
-            S_DEBUGF("ERROR: Node is idle but radio is not in Idle or RX. Radio state: %d\n", currentRadioState);
+            S_DEBUGF("ERROR: Radio in unexpected state %d while node idle, resetting...\n", currentRadioState);
+            radio.initialize();
+            return true;
         }
         return false;
     }
 
-    bool checkAndHandleReceiveQueue(){
-        if (Packets::receiveQueue.empty()) return false;
+    bool Node::handleReceivedPackets(){
+        if (receiveQueue.empty()) return false;
         
-        Packets::Packet* packetToHandle = Packets::receiveQueue.begin()->second;
-        S_DEBUGF("Handling received packet %4X\n", packetToHandle->getPacketIdentifier());
-        packetToHandle->handle();
+        Packets::Packet* packetToHandle = receiveQueue.begin()->second;
+        S_DEBUGF("Handling received packet %04X\n", packetToHandle->getPacketIdentifier());
+
+        std::list<uint32_t> ackedPacketIdentifiers;
+        auto responsePackets = packetToHandle->handle(ackedPacketIdentifiers);
+        
+        sendQueue.removePacketsFromIdentifierList(ackedPacketIdentifiers);
+        sendQueue.addPacketsFromList(responsePackets);
+        
+        delete responsePackets; //only delete the list, contained ponters still valid and added to sendQueue
+        responsePackets = nullptr;
         delete packetToHandle;
-        Packets::receiveQueue.erase(packetToHandle->getPacketIdentifier());
+        receiveQueue.erase(packetToHandle->getPacketIdentifier());
         packetToHandle = nullptr;
         return true;
     }
-}
+
+    bool Node::tick(LoRaHelper::SX1262_helper &radio){
+        bool handled = false;
+        handled |= handleRadioIRQ(radio);
+        handled |= sendNextPacketOrStartReceive(radio);
+        handled |= handleReceivedPackets();
+        return handled;
+    }
+};

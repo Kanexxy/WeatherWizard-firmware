@@ -32,6 +32,12 @@
 
 namespace LoRaHelper {
 
+    // Forward declaration
+    class SX1262_helper;
+
+    // Callback type for pre-transmission updates (e.g., timestamps)
+    typedef void (*PreTransmitCallback_t)(SX1262_helper* radio, byte* data, uint8_t length);
+
     typedef enum {
         STATE_UNINITIALIZED,
         STATE_IDLE,
@@ -62,11 +68,10 @@ namespace LoRaHelper {
 
     class SX1262_helper : public SX1262 {
         public:
-            using SX1262::SX1262;
             SX1262_helper(Module* mod) : SX1262(mod) {}
 
             void initialize();
-            bool startPoliteTransmit(const byte *data, uint8_t length);
+            bool startPoliteTransmit(const byte *data, uint8_t length, PreTransmitCallback_t callback = nullptr);
             bool startIdleReceive();
             progress_t handlePendingIRQ();
             static void haltIfError(int radiolibState);
@@ -74,6 +79,7 @@ namespace LoRaHelper {
             bool isInterruptPending() const { return interruptIsPending; }
             radioState_t getCurrentState() const { return currentState; }
             byte* popDataFromInstanceBuffer(uint8_t& outLength);
+            void printStatusRegister();
             
         private:
             bool interruptIsPending = false;
@@ -81,6 +87,7 @@ namespace LoRaHelper {
             
             byte* _tx_data = nullptr;
             uint8_t _tx_length = 0;
+            PreTransmitCallback_t _preTransmitCallback = nullptr;
 
             byte* _rx_data = nullptr;
             uint8_t _rx_length = 0;

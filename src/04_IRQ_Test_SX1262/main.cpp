@@ -9,6 +9,7 @@ volatile bool packetFlag = false;
 #if defined(ESP8266) || defined(ESP32)
   ICACHE_RAM_ATTR
 #endif
+
 void setFlag(void) {
   // we got a packet, set the flag
   packetFlag = true;

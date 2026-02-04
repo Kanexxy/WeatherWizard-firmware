@@ -8,46 +8,71 @@
 
 LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(HELTEC_NSS_PIN, HELTEC_DIO0_PIN, HELTEC_RESET_PIN, HELTEC_BUSY_PIN));
 
-const unsigned long wakeDuration = 5000;
+Node::Node sensorNode;
+void findAndSetHopToGateway();
 
 void setup() {
     Serial.begin(115200);
     S_DEBUGF("Starting Master Node...\n");
-
-    radio.initialize();
-    //MeshUtils::initializeMeshConnection();
-    MeshUtils::nodeID = radio.random(0xFFFF);
-    Node::nodeState = Node::NODE_STATE_IDLE;
+    MeshUtils::initMeshVars(false);
+    sensorNode.nodeState = Node::NODE_STATE_INITIALIZING;
+    findAndSetHopToGateway();
+    
+    S_DEBUGF("Initialization complete. Syncing with wake cycle...\n");
+    while(!TimeUtils::isInWakeWindow()) delay(5);
 }
 
 void loop() {
     S_DEBUGF("Waking up sensor node (ID %.4X)...\n", MeshUtils::nodeID);
-    Node::nodeState = Node::NODE_STATE_IDLE;
+    radio.initialize();
+
+    sensorNode.nodeState = Node::NODE_STATE_IDLE;
     unsigned long wakeUpTime = millis();
     
     Packets::Packet* debugPacket = Packets::Packet::createDebugMessagePacket(
             "Test debug message.",
-            MeshUtils::broadcastID,
+            MeshUtils::nextHopID,
             Packets::DEBUG_MESSAGE_TYPE_INFO
     );
-    Packets::sendQueue[debugPacket->getPacketIdentifier()] = debugPacket;
-
-    Packets::sendQueue.newCycle();
-    Packets::Packet* currentlySendingPacket = Packets::sendQueue.next();
+    sensorNode.sendQueue.add(debugPacket);
     
-    while (millis() - wakeUpTime < wakeDuration){
-        if (Node::checkAndHandleRadioIRQ(radio, currentlySendingPacket)) continue;
-
-        if (Node::checkAndHandleIdleState(radio, currentlySendingPacket)) continue;
-
-        if (Node::checkAndHandleReceiveQueue()) continue;
-
+    sensorNode.sendQueue.newCycle();
+    
+    while (TimeUtils::isInWakeWindow()){
+        if (sensorNode.tick(radio)) continue;
     }
     //going to sleep
     S_DEBUGF("Going to sleep...\n\n");
     //Sleeping is simulated by just waiting here
-    Node::nodeState = Node::NODE_STATE_SLEEPING;
+    sensorNode.nodeState = Node::NODE_STATE_SLEEPING;
     radio.standby();
-    delay(2000);
-    radio.initialize(); //reset radio state
+    delay(TimeUtils::wakeCycleConfig.sleepDurationSeconds * 1000);
+}
+
+void findAndSetHopToGateway(){
+    Node::Node tempNode;
+    radio.initialize();
+    tempNode.nodeState = Node::NODE_STATE_IDLE;
+    S_DEBUGF("Finding hop to gateway...\n");
+    unsigned long discoverPacketSentTime = millis();
+    tempNode.sendQueue.add(Packets::Packet::createDiscoverPacket());
+    bool discoverPacketSent = true;
+    while (MeshUtils::hasConnection == false){
+
+        if (tempNode.tick(radio)) continue;
+        // Send discover packet if recent nodes found and not sent yet, or if timeout of one cycle reached
+        if ((MeshUtils::availableNodes.hasRecentNode(1) ||
+            millis() - discoverPacketSentTime > TimeUtils::getCycleDurationSeconds() * 1000 * 1)
+            && !discoverPacketSent){
+            S_DEBUGF("Sending discover packet to find route to gateway...\n");
+            tempNode.sendQueue.add(Packets::Packet::createDiscoverPacket());
+            discoverPacketSent = true;
+            discoverPacketSentTime = millis();
+        }
+        // Retry sending discover packet every 2 full wake/sleep cycles if no connection yet
+        if (discoverPacketSent && (millis() - discoverPacketSentTime) > TimeUtils::getCycleDurationSeconds() * 1000 * 2){
+            S_DEBUGF("Trying to set next hop from available nodes...\n");
+            discoverPacketSent = MeshUtils::setNextHopFromAvailableNodes(); //returns true if next hop successfully set, false if no suitable node found
+        }
+    }
 }

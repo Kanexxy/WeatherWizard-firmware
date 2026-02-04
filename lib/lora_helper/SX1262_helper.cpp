@@ -58,6 +58,7 @@ namespace LoRaHelper {
     progress_t SX1262_helper::handlePendingIRQ() {
         interruptIsPending = false;
         auto irqFlags = this->getIrqFlags();
+        
         progress_t progress = ERR_UNKNOWN;
         switch (irqFlags){
             case RADIOLIB_SX126X_IRQ_CAD_DONE:
@@ -174,6 +175,7 @@ namespace LoRaHelper {
                     finishPoliteTransmit();
                     currentState = STATE_RX_RECEIVING;
                     progress = ERR_TX_CAD_DETECTED;
+                    //check what radio is doing
                     return progress;
         }
 
@@ -187,6 +189,8 @@ namespace LoRaHelper {
             
             case STATE_TX_CAD_2:
                 S_DEBUGF("CAD Done in TX_CAD_2 state. Proceeding to transmit (%d Bytes).\n", this->_tx_length);
+                // Call pre-transmit callback if set (for updating timestamps, time-on-air, etc.)
+                if (this->_preTransmitCallback != nullptr) this->_preTransmitCallback(this, this->_tx_data, this->_tx_length);
                 debugIfError(this->startTransmit((const byte*) this->_tx_data, this->_tx_length));
                 this->currentState = STATE_TX_TRANSMITTING;
                 progress = PROGRESS_TX;
@@ -214,7 +218,7 @@ namespace LoRaHelper {
             case STATE_TX_DELAY_RX:{
                 S_DEBUGF("Timeout in TX_DELAY_RX state. Starting second CAD before transmit...\n");
                 this->standby(); // Go to standby before issuing new commands
-                haltIfError(this->startChannelScan(defaultChannelScanConfig));
+                debugIfError(this->startChannelScan(defaultChannelScanConfig));
                 S_DEBUGF("Second CAD started successfully.\n");
                 this->currentState = STATE_TX_CAD_2;
                 progress = PROGRESS_TX;
@@ -230,19 +234,20 @@ namespace LoRaHelper {
         return progress;
     }
 
-    bool SX1262_helper::startPoliteTransmit(const byte *data, uint8_t length) {
+    bool SX1262_helper::startPoliteTransmit(const byte *data, uint8_t length, PreTransmitCallback_t callback) {
         if (currentState != STATE_IDLE && currentState != STATE_RX_RECEIVING) {
             S_DEBUGF("Radio not idle or in RX, cannot send politely.\n");
             return false;
         }
 
         if (_tx_data != nullptr) {
-            S_DEBUGF("It seems a polite transmit is already in progress.\n");
+            S_DEBUGF("It seems like a polite transmit is already in progress.\n");
             return false;
         }
 
         _tx_data = (byte*)data;
         _tx_length = length;
+        _preTransmitCallback = callback;
         
         S_DEBUGF("Starting first CAD before polite send...\n");
         debugIfError(this->startChannelScan(defaultChannelScanConfig));
@@ -256,36 +261,37 @@ namespace LoRaHelper {
         delete[] _tx_data;
         this->_tx_data = nullptr;
         _tx_length = 0;
+        _preTransmitCallback = nullptr;
         return;
     }
 
     void SX1262_helper::initialize(){
 
-        S_DEBUGF("Initializing SX1262...\n");
+        S_DEBUGF("[LoRaHelper Init]\n\tInitializing SX1262...\n");
         haltIfError(this->begin());
 
-        S_DEBUGF("Setting frequency...\n");
+        S_DEBUGF("\tSetting frequency...\n");
         haltIfError(this->setFrequency(LORA_FREQUENCY));
 
-        S_DEBUGF("Setting Spreading factor...\n");
+        S_DEBUGF("\tSetting Spreading factor...\n");
         haltIfError(this->setSpreadingFactor(LORA_SPREADING_FACTOR));
 
-        S_DEBUGF("Setting Bandwidth...\n");
+        S_DEBUGF("\tSetting Bandwidth...\n");
         haltIfError(this->setBandwidth(LORA_BANDWIDTH));
 
-        S_DEBUGF("Setting coding rate...\n");
+        S_DEBUGF("\tSetting coding rate...\n");
         haltIfError(this->setCodingRate(LORA_CODING_RATE));
 
-        S_DEBUGF("Setting sync word...\n");
+        S_DEBUGF("\tSetting sync word...\n");
         haltIfError(this->setSyncWord(RADIOLIB_SX126X_SYNC_WORD_PRIVATE));
 
-        S_DEBUGF("Setting output power...\n");
+        S_DEBUGF("\tSetting output power...\n");
         haltIfError(this->setOutputPower(LORA_OUTPUT_POWER));
 
-        S_DEBUGF("Setting Preamble length...\n");
+        S_DEBUGF("\tSetting Preamble length...\n");
         haltIfError(this->setPreambleLength(LORA_PREAMBLE_LENGTH));
 
-        S_DEBUGF("Setting RX Callback function...\n");
+        S_DEBUGF("\tSetting RX Callback function...\n");
         this->setDio1Action(DIO0Trampoline);
         
         //Add this instance to the static instances vector if not already present
@@ -307,7 +313,7 @@ namespace LoRaHelper {
             this->_rx_data = nullptr;
             this->_rx_length = 0;
         }
-        S_DEBUGF("Initialization completed successfully.\n");
+        S_DEBUGF("\tInitialization completed successfully.\n");
     }
 
     bool SX1262_helper::startIdleReceive() {
@@ -320,5 +326,11 @@ namespace LoRaHelper {
         currentState = STATE_RX_RECEIVING;
         S_DEBUGF("Receive started successfully.\n");
         return true;
+    }
+
+    void SX1262_helper::printStatusRegister(){
+        uint8_t status = this->getStatus();
+        //Output with bit masking according to datasheet
+        S_DEBUGF("SX1262 Status Register: 0x%02X Command Status: 0x%01X, Chip Mode: 0x%01X\n", status, (status & 0b00001110) >> 1, (status & 0b01110000) >> 4);
     }
 }
