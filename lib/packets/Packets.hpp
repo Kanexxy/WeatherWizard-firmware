@@ -69,6 +69,12 @@ namespace Packets {
        TimeUtils::SyncInfo_t timeSyncInfo;
     } AckPacketContent_t;
 
+    typedef struct{
+       uint16_t nodeId;
+       uint16_t nextNodeId;
+       time_t lastSeenTime;
+    } RegisterNodePacketContent_t;
+
     //list with packets where no ack is expected
     const PacketType_t noAckExpectedPacketTypes[] = {
         PACKET_TYPE_ACK,
@@ -93,7 +99,8 @@ namespace Packets {
             static Packet* createDebugMessagePacket(String message, uint16_t receiverId, DebugMessageSeverity_t severity);
             static Packet* createDiscoverPacket();
             static Packet* createToBeForwardedPacket(const Packet &original);
-            std::list<Packet*>* handle(std::list<uint32_t>& ackedPacketIdentifiers);
+            static Packet* createRegisterNodePacket(uint16_t receiverId);
+            std::list<Packet*>* handle(std::list<uint32_t>& ackedPacketIdentifiers, std::function<void(Packet*)> masterNodeHandler = nullptr);
             void markAsSent();
             void printHead();
 

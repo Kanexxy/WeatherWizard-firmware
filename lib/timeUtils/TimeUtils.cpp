@@ -2,13 +2,6 @@
 
 namespace TimeUtils {
 
-    WakeCycleConfig_t wakeCycleConfig = {defaultWakeDurationSeconds, defaultSleepDurationSeconds};
-    uint8_t accumulatedValuesCount = 0;
-
-    const char* ntpServer = "pool.ntp.org";
-    const long  gmtOffset_sec = 0; // Keep it UTC for easier sync logic
-    const int   daylightOffset_sec = 0;
-
     bool initializeTimeFromNTP() {
         if (WiFi.status() != WL_CONNECTED) {
             S_DEBUGF("WiFi not connected, cannot initialize time from NTP.\n");

@@ -8,16 +8,16 @@
 
 namespace TimeUtils {
 
-    const unsigned long defaultWakeDurationSeconds = 5;
-    const unsigned long defaultSleepDurationSeconds = 10;
-    const unsigned long defaultCycleDurationSeconds = defaultWakeDurationSeconds + defaultSleepDurationSeconds;
-    const uint8_t maxAccumulatedValuesCount = 10;
+    inline const unsigned long defaultWakeDurationSeconds = 5;
+    inline const unsigned long defaultSleepDurationSeconds = 10;
+    inline const unsigned long defaultCycleDurationSeconds = defaultWakeDurationSeconds + defaultSleepDurationSeconds;
+    inline const uint8_t maxAccumulatedValuesCount = 10;
     // NTP Server settings
-    extern const char* ntpServer;
-    extern const long  gmtOffset_sec;    // Keep it UTC for easier sync logic
-    extern const int   daylightOffset_sec;
+    inline const char* ntpServer = "pool.ntp.org";
+    inline const long  gmtOffset_sec = 0; // Keep it UTC for easier sync logic
+    inline const int   daylightOffset_sec = 0;
     // variable that stores the amount of accumulated values for time sync averaging
-    extern uint8_t accumulatedValuesCount;
+    inline uint8_t accumulatedValuesCount = 0;
 
     typedef struct{
         time_t remoteNodeTime;
@@ -29,7 +29,7 @@ namespace TimeUtils {
         uint16_t sleepDurationSeconds;
     } WakeCycleConfig_t;
 
-    extern WakeCycleConfig_t wakeCycleConfig;
+    inline WakeCycleConfig_t wakeCycleConfig = {defaultWakeDurationSeconds, defaultSleepDurationSeconds};
     
     time_t getCurrentTime();
     unsigned long getCycleDurationSeconds();

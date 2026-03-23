@@ -54,8 +54,8 @@ namespace Packets {
     uint32_t Packet::getPacketIdentifier() const {
         return ((uint32_t)this->head.sourceId << 16) | this->head.packetId;
     }
-
-    std::list<Packet*>* Packet::handle(std::list<uint32_t>& ackedPacketIdentifiers) {
+    //let function also take a function pointer to a handler in case it is a masternode, argument is packet
+    std::list<Packet*>* Packet::handle(std::list<uint32_t>& ackedPacketIdentifiers, std::function<void(Packet*)> masterNodeHandler) {
         std::list<Packet*>* responsePackets = new std::list<Packet*>();
 
         MeshUtils::availableNodes.addOrUpdateNode(this->head.senderId, this->info.rssi, this->info.snr);
@@ -77,6 +77,8 @@ namespace Packets {
                 if (!MeshUtils::isGateway) {
                     S_DEBUGF("[SENSOR DATA PACKET %08X]\n\tfrom %d\n\tforwarding to %d\n", this->getPacketIdentifier(), this->head.senderId, MeshUtils::nextHopID);
                     responsePackets->push_back(createToBeForwardedPacket(*this));
+                } else {
+                    masterNodeHandler(this);
                 }
                 break;
             }
@@ -113,12 +115,18 @@ namespace Packets {
                 if (!MeshUtils::isGateway){
                     S_DEBUGF("Forwarding register-node-packet %08X from node %d\n", this->getPacketIdentifier(), this->head.sourceId);
                     responsePackets->push_back(createToBeForwardedPacket(*this));
+                    break;
                 }
+                if (masterNodeHandler == nullptr) {
+                    S_DEBUGF("Received register-node-packet %08X but no master node handler defined\n", this->getPacketIdentifier());
+                    break;
+                }
+                masterNodeHandler(this);
                 break;
             }
 
             case PACKET_TYPE_DEBUG_MESSAGE:{
-                S_DEBUGF("Debug message: %.*s\n", this->head.dataLength, this->head.data);
+                S_DEBUGF("[DEBUG PACKET]\n\tMessage: %.*s\n", this->head.dataLength, this->head.data);
                 break;
             }
 
@@ -190,6 +198,21 @@ namespace Packets {
             nullptr                 // 4 Byte
         );
         return newPacket;
+    }
+
+    Packet* Packet::createRegisterNodePacket(uint16_t receiverId) {
+        RegisterNodePacketContent_t* content = new RegisterNodePacketContent_t;
+        content->lastSeenTime = 0; //Will be set just before transmission
+        content->nextNodeId = MeshUtils::nextHopID;
+        content->nodeId = MeshUtils::nodeID;
+        return new Packet(
+            MeshUtils::nodeID,
+            receiverId,
+            MeshUtils::nodeID,
+            PACKET_TYPE_REGISTER_NODE,
+            sizeof(RegisterNodePacketContent_t),
+            (uint8_t*)content
+        );
     }
 
     Packet* Packet::createDebugMessagePacket(String message, uint16_t receiverId, DebugMessageSeverity_t severity) {

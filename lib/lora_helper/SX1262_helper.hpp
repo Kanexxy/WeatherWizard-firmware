@@ -1,5 +1,6 @@
 #pragma once
 #include <RadioLib.h>
+#include <SPI.h>
 
 #ifdef __AVR__
     #include <ArduinoSTL.h>
@@ -17,13 +18,19 @@
 #define LORA_CODING_RATE 5
 #define LORA_PREAMBLE_LENGTH 14
 #define LORA_OUTPUT_POWER -9
-                                         
-#define LORA_POLITE_SEND_MIN_BACKOFF_MS 40
-#define LORA_POLITE_SEND_BACKOFF_MULTIPLIER 1.5
 
-#define NSS_PIN 5
-#define RESET_PIN 14
-#define DIO0_PIN 2
+#define LORA_POLITE_SEND_MIN_BACKOFF_MS 150
+#define LORA_POLITE_SEND_MAX_BACKOFF_MS 280
+
+
+#define WW_SX1262_CS 33
+#define WW_SX1262_SCK 32
+#define WW_SX1262_MOSI 22
+#define WW_SX1262_MISO 23
+
+#define WW_SX1262_RESET 27
+#define WW_SX1262_BUSY 25
+#define WW_SX1262_DIO1 26
 
 #define HELTEC_NSS_PIN 8
 #define HELTEC_RESET_PIN 12
@@ -98,6 +105,7 @@ namespace LoRaHelper {
             progress_t handleCADDoneIRQ(bool channelActivityDetected);
             progress_t handleTimeoutIRQ();
             void addDataToInstanceBuffer(byte* packetData, size_t packetLength, int radiolibState);
+            static uint32_t msToSX1262TimeoutValue(uint32_t ms);
             static inline std::vector<SX1262_helper*> s_instances{};
             static void DIO0Trampoline();
             void DIO0Callback();

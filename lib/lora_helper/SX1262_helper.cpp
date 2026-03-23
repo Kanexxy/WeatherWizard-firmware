@@ -180,14 +180,15 @@ namespace LoRaHelper {
         }
 
         switch (currentState) {
-            case STATE_TX_CAD_1:
-                S_DEBUGF("CAD Done in TX_CAD_1 state. Proceeding to RX delay.\n");
-                debugIfError(this->startReceive(this->random(0, LORA_POLITE_SEND_MIN_BACKOFF_MS)));
+            case STATE_TX_CAD_1:{
+                uint8_t rxDelay = this->random(LORA_POLITE_SEND_MIN_BACKOFF_MS, LORA_POLITE_SEND_MAX_BACKOFF_MS);
+                S_DEBUGF("CAD Done in TX_CAD_1 state. Proceeding to RX delay with timeout %d ms\n", rxDelay);
+                debugIfError(this->startReceive(msToSX1262TimeoutValue(rxDelay)));
                 this->currentState = STATE_TX_DELAY_RX;
                 progress = PROGRESS_TX;
                 break;
-            
-            case STATE_TX_CAD_2:
+            }
+            case STATE_TX_CAD_2: {
                 S_DEBUGF("CAD Done in TX_CAD_2 state. Proceeding to transmit (%d Bytes).\n", this->_tx_length);
                 // Call pre-transmit callback if set (for updating timestamps, time-on-air, etc.)
                 if (this->_preTransmitCallback != nullptr) this->_preTransmitCallback(this, this->_tx_data, this->_tx_length);
@@ -195,11 +196,13 @@ namespace LoRaHelper {
                 this->currentState = STATE_TX_TRANSMITTING;
                 progress = PROGRESS_TX;
                 break;
+            }
             
-            default:
+            default:{
                 S_DEBUGF("CAD Done in unexpected state %d.\n", currentState);
                 progress = ERR_INVALID_STATE;
                 break;
+            }
         }
         return progress;
     }
@@ -266,6 +269,10 @@ namespace LoRaHelper {
     }
 
     void SX1262_helper::initialize(){
+        //dont initialize SPI if using Heltec board, because it uses the default SPI pins
+        //#if !defined(ARDUINO_HELTEC_WIFI_LORA_32_V3)
+        // SPI.begin(WW_SX1262_SCK, WW_SX1262_MISO, WW_SX1262_MOSI, WW_SX1262_CS);
+        //#endif
 
         S_DEBUGF("[LoRaHelper Init]\n\tInitializing SX1262...\n");
         haltIfError(this->begin());
@@ -314,6 +321,11 @@ namespace LoRaHelper {
             this->_rx_length = 0;
         }
         S_DEBUGF("\tInitialization completed successfully.\n");
+    }
+
+    uint32_t SX1262_helper::msToSX1262TimeoutValue(uint32_t ms) {
+        // SX1262 timeout value is in units of 15.625 us
+        return (ms * 1000) / 15.625;
     }
 
     bool SX1262_helper::startIdleReceive() {

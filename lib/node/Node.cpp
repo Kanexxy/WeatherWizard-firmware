@@ -24,7 +24,11 @@ namespace Node{
             Packets::AckPacketContent_t* content = (Packets::AckPacketContent_t*)payloadData;
             content->timeSyncInfo.remoteNodeTime = currentTime;
             content->timeSyncInfo.estimatedTimeOnAirUs = callingRadio->getTimeOnAir(length);
-            S_DEBUGF("Pre-TX: Updated Ack-Packet timestamp to %ld, ToA: %d ms\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
+            S_DEBUGF("Pre-TX: Updated Ack packet timestamp to %ld, ToA: %d ms\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
+        } else if (head->packetType == Packets::PACKET_TYPE_REGISTER_NODE){
+            Packets::RegisterNodePacketContent_t* content = (Packets::RegisterNodePacketContent_t*)payloadData;
+            content->lastSeenTime = currentTime;
+            S_DEBUGF("Pre-TX: Updated RegisterNode packet timestamp to %ld\n", currentTime);
         }
     }
 
@@ -133,15 +137,15 @@ namespace Node{
         S_DEBUGF("Handling received packet %04X\n", packetToHandle->getPacketIdentifier());
 
         std::list<uint32_t> ackedPacketIdentifiers;
-        auto responsePackets = packetToHandle->handle(ackedPacketIdentifiers);
+        auto responsePackets = packetToHandle->handle(ackedPacketIdentifiers, masterNodeHandler);
         
         sendQueue.removePacketsFromIdentifierList(ackedPacketIdentifiers);
         sendQueue.addPacketsFromList(responsePackets);
         
+        receiveQueue.erase(packetToHandle->getPacketIdentifier());
         delete responsePackets; //only delete the list, contained ponters still valid and added to sendQueue
         responsePackets = nullptr;
         delete packetToHandle;
-        receiveQueue.erase(packetToHandle->getPacketIdentifier());
         packetToHandle = nullptr;
         return true;
     }

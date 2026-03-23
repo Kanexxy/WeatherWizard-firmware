@@ -6,8 +6,9 @@
 #include "Packets.hpp"
 #include "Mesh.hpp"
 
-LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(HELTEC_NSS_PIN, HELTEC_DIO0_PIN, HELTEC_RESET_PIN, HELTEC_BUSY_PIN));
+//LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(HELTEC_NSS_PIN, HELTEC_DIO0_PIN, HELTEC_RESET_PIN, HELTEC_BUSY_PIN));
 
+LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(WW_SX1262_CS, WW_SX1262_DIO1, WW_SX1262_RESET, WW_SX1262_BUSY));
 Node::Node sensorNode;
 void findAndSetHopToGateway();
 
@@ -20,6 +21,8 @@ void setup() {
     
     S_DEBUGF("Initialization complete. Syncing with wake cycle...\n");
     while(!TimeUtils::isInWakeWindow()) delay(5);
+    //Adding register Node packet
+    sensorNode.sendQueue.add(Packets::Packet::createRegisterNodePacket(MeshUtils::nextHopID));
 }
 
 void loop() {
@@ -28,9 +31,9 @@ void loop() {
 
     sensorNode.nodeState = Node::NODE_STATE_IDLE;
     unsigned long wakeUpTime = millis();
-    
+    time_t currentTime = TimeUtils::getCurrentTime();
     Packets::Packet* debugPacket = Packets::Packet::createDebugMessagePacket(
-            "Test debug message.",
+            "Test debug message. Current Time: " + String(ctime(&currentTime)),
             MeshUtils::nextHopID,
             Packets::DEBUG_MESSAGE_TYPE_INFO
     );

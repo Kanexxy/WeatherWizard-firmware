@@ -28,6 +28,10 @@ namespace Node{
 
             Packets::Packet* currentlySendingPacket = nullptr;
 
+            std::function<void(Packets::Packet*)> masterNodeHandler;
+
+            Node(std::function<void(Packets::Packet*)> handler = nullptr) : masterNodeHandler(handler), nodeState(NODE_STATE_INITIALIZING) {}
+
             void addReceivedDataToRxQueue(LoRaHelper::SX1262_helper &radio);
             void sendPacket(LoRaHelper::SX1262_helper &radio, const Packets::Packet* packet);
             static void preTransmitCallback(LoRaHelper::SX1262_helper* callingRadio, byte* data, uint8_t length);
