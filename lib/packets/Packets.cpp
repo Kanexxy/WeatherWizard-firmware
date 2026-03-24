@@ -51,7 +51,7 @@ namespace Packets {
         }
     }
 
-    uint32_t Packet::getPacketIdentifier() const {
+    uint32_t Packet::getGlobalPacketIdentifier() const {
         return ((uint32_t)this->head.sourceId << 16) | this->head.packetId;
     }
     //let function also take a function pointer to a handler in case it is a masternode, argument is packet
@@ -75,7 +75,7 @@ namespace Packets {
             case PACKET_TYPE_SENSORDATA:{
                 //Sensor packets are only for gateway nodes, forward if not gateway
                 if (!MeshUtils::isGateway) {
-                    S_DEBUGF("[SENSOR DATA PACKET %08X]\n\tfrom %d\n\tforwarding to %d\n", this->getPacketIdentifier(), this->head.senderId, MeshUtils::nextHopID);
+                    S_DEBUGF("[SENSOR DATA PACKET %08X]\n\tfrom %d\n\tforwarding to %d\n", this->getGlobalPacketIdentifier(), this->head.senderId, MeshUtils::nextHopID);
                     responsePackets->push_back(createToBeForwardedPacket(*this));
                 } else {
                     masterNodeHandler(this);
@@ -84,7 +84,7 @@ namespace Packets {
             }
             case PACKET_TYPE_ACK: {
                 AckPacketContent_t* ackContent = (AckPacketContent_t*)this->head.data;
-                S_DEBUGF("[ACK PACKET %08X]\n\tAcknowledging Packet %08X\n", this->getPacketIdentifier(), ackContent->ackedPacketIdentifier);
+                S_DEBUGF("[ACK PACKET %08X]\n\tAcknowledging Packet %08X\n", this->getGlobalPacketIdentifier(), ackContent->ackedPacketIdentifier);
                 TimeUtils::setLocalTimeFromRemote(ackContent->timeSyncInfo);
                 ackedPacketIdentifiers.push_back(ackContent->ackedPacketIdentifier);
                 break;
@@ -94,7 +94,7 @@ namespace Packets {
                 break;
             }
             case PACKET_TYPE_DISCOVER:{
-                S_DEBUGF("[DISCOVER PACKET %08X]\n", this->getPacketIdentifier());
+                S_DEBUGF("[DISCOVER PACKET %08X]\n", this->getGlobalPacketIdentifier());
                 if (MeshUtils::hasConnection){
                     responsePackets->push_back(createAdvertisePacket(this->head.senderId, MeshUtils::hopCountToGateway));
                 }
@@ -104,7 +104,7 @@ namespace Packets {
                 AdvertisePacketContent_t* data = (AdvertisePacketContent_t*)this->head.data;
                 MeshUtils::availableNodes.addOrUpdateNode(this->head.senderId, this->info.rssi, this->info.snr, data->hopCountToGateway, data->wakeCycleConfig);
                 TimeUtils::setLocalTimeFromRemoteAccumulated(data->timeSyncInfo);
-                S_DEBUGF("[ADVERTISE PACKET %08X]\n", this->getPacketIdentifier());
+                S_DEBUGF("[ADVERTISE PACKET %08X]\n", this->getGlobalPacketIdentifier());
                 S_DEBUGF("\tHops to gateway: %d\n", data->hopCountToGateway);
                 S_DEBUGF("\tRemote Node Time: %s", ctime(&(data->timeSyncInfo.remoteNodeTime)));
                 S_DEBUGF("\tWake Duration: %d seconds, Sleep Duration: %d seconds\n", data->wakeCycleConfig.wakeDurationSeconds, data->wakeCycleConfig.sleepDurationSeconds);
@@ -113,12 +113,12 @@ namespace Packets {
 
             case PACKET_TYPE_REGISTER_NODE:{
                 if (!MeshUtils::isGateway){
-                    S_DEBUGF("Forwarding register-node-packet %08X from node %d\n", this->getPacketIdentifier(), this->head.sourceId);
+                    S_DEBUGF("Forwarding register-node-packet %08X from node %d\n", this->getGlobalPacketIdentifier(), this->head.sourceId);
                     responsePackets->push_back(createToBeForwardedPacket(*this));
                     break;
                 }
                 if (masterNodeHandler == nullptr) {
-                    S_DEBUGF("Received register-node-packet %08X but no master node handler defined\n", this->getPacketIdentifier());
+                    S_DEBUGF("Received register-node-packet %08X but no master node handler defined\n", this->getGlobalPacketIdentifier());
                     break;
                 }
                 masterNodeHandler(this);
@@ -140,7 +140,7 @@ namespace Packets {
 
     Packet* Packet::createAckPacket(const Packet &original) {
         AckPacketContent_t* content = new AckPacketContent_t();
-        content->ackedPacketIdentifier = original.getPacketIdentifier();
+        content->ackedPacketIdentifier = original.getGlobalPacketIdentifier();
         content->timeSyncInfo = {0, 0}; // Will be set just before transmission
 
         Packet* newPacket = new Packet(

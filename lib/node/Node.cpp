@@ -36,7 +36,7 @@ namespace Node{
         uint8_t outLength = 0;
         byte* data = radio.popDataFromInstanceBuffer(outLength);
         Packets::Packet* receivedPacket = new Packets::Packet(outLength, data, radio.getRSSI(), radio.getSNR());
-        receiveQueue[receivedPacket->getPacketIdentifier()] = receivedPacket;
+        receiveQueue[receivedPacket->getGlobalPacketIdentifier()] = receivedPacket;
         S_DEBUGF("Added received packet (%d Bytes) ID %04X from %04X to receive queue\n", outLength, receivedPacket->head.packetId, receivedPacket->head.senderId);
         delete[] data;
         data = nullptr;
@@ -48,7 +48,7 @@ namespace Node{
         memcpy(data, &(packet->head), sizeof(Packets::PacketHead_t));
         ((Packets::PacketHead_t*)data)->data = nullptr;
         memcpy(data + sizeof(Packets::PacketHead_t), packet->head.data, packet->head.dataLength);
-        S_DEBUGF("Starting polite transmit of packet 0x%08X to 0x%04X\n", packet->getPacketIdentifier(), packet->head.receiverId);
+        S_DEBUGF("Starting polite transmit of packet 0x%08X to 0x%04X\n", packet->getGlobalPacketIdentifier(), packet->head.receiverId);
         
         if (!radio.startPoliteTransmit((const byte*) data, sizeof(Packets::PacketHead_t) + packet->head.dataLength, preTransmitCallback)){
             S_DEBUGF("Failed to start polite transmit of packet ID %04X\n", packet->head.packetId);
@@ -86,10 +86,10 @@ namespace Node{
             }
         
             case LoRaHelper::PROGRESS_TX_COMPLETE: {
-                S_DEBUGF("Transmission of packet 0x%08X complete.\n", currentlySendingPacket->getPacketIdentifier());
+                S_DEBUGF("Transmission of packet 0x%08X complete.\n", currentlySendingPacket->getGlobalPacketIdentifier());
                 if (!currentlySendingPacket->isAckExpected())
                 {
-                    sendQueue.erase(currentlySendingPacket->getPacketIdentifier());
+                    sendQueue.erase(currentlySendingPacket->getGlobalPacketIdentifier());
                     delete currentlySendingPacket;
                     currentlySendingPacket = nullptr;
                 } else {
@@ -134,7 +134,7 @@ namespace Node{
         if (receiveQueue.empty()) return false;
         
         Packets::Packet* packetToHandle = receiveQueue.begin()->second;
-        S_DEBUGF("Handling received packet %04X\n", packetToHandle->getPacketIdentifier());
+        S_DEBUGF("Handling received packet %04X\n", packetToHandle->getGlobalPacketIdentifier());
 
         std::list<uint32_t> ackedPacketIdentifiers;
         auto responsePackets = packetToHandle->handle(ackedPacketIdentifiers, masterNodeHandler);
@@ -142,7 +142,7 @@ namespace Node{
         sendQueue.removePacketsFromIdentifierList(ackedPacketIdentifiers);
         sendQueue.addPacketsFromList(responsePackets);
         
-        receiveQueue.erase(packetToHandle->getPacketIdentifier());
+        receiveQueue.erase(packetToHandle->getGlobalPacketIdentifier());
         delete responsePackets; //only delete the list, contained ponters still valid and added to sendQueue
         responsePackets = nullptr;
         delete packetToHandle;

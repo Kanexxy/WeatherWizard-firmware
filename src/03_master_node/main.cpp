@@ -17,7 +17,7 @@ void masterNodeHandler(Packets::Packet* packet);
 Node::Node masterNode(masterNodeHandler);
 
 void masterNodeHandler(Packets::Packet* packet){
-    S_DEBUGF("Master node handler called for packet %08X\n", packet->getPacketIdentifier());
+    S_DEBUGF("Master node handler called for packet %08X\n", packet->getGlobalPacketIdentifier());
     if (packet->head.packetType == Packets::PACKET_TYPE_REGISTER_NODE){
         Packets::RegisterNodePacketContent_t* content = (Packets::RegisterNodePacketContent_t*)packet->head.data;
         S_DEBUGF("Received register-node-packet from node %d with RSSI %.2f and SNR %.2f\n", packet->head.sourceId, packet->info.rssi, packet->info.snr);

@@ -9,7 +9,7 @@ namespace Packets {
     }
 
     void PacketQueue::add(Packet* packet) {
-        (*this)[packet->getPacketIdentifier()] = packet;
+        (*this)[packet->getGlobalPacketIdentifier()] = packet;
     }
 
     Packet* PacketQueue::next() {

@@ -13,7 +13,7 @@ namespace Packets {
     typedef enum {
         PACKET_TYPE_SENSORDATA,
         PACKET_TYPE_ACK,
-        PACKET_TYPE_COMMAND,
+        PACKET_TYPE_COMMAND,        // For future use, e.g. to send commands from gateway to nodes
         PACKET_TYPE_DISCOVER,
         PACKET_TYPE_ADVERTISE,
         PACKET_TYPE_REGISTER_NODE,
@@ -31,7 +31,7 @@ namespace Packets {
         uint8_t *data;
     } PacketHead_t;
 
-    // Size of packet head: 2 + 2 + 2 + 1 + 2 + 2 + 4 = 15 Bytes
+
     typedef struct {
         bool hasBeenSent = false;
         bool hasBeenSentInCycle = false;
@@ -92,7 +92,7 @@ namespace Packets {
             Packet(uint16_t size, uint8_t *data, float rssi, float snr);
             Packet(const Packet& other);
             ~Packet();
-            uint32_t getPacketIdentifier() const;
+            uint32_t getGlobalPacketIdentifier() const;
             bool isAckExpected();
             static Packet* createAckPacket(const Packet &original);
             static Packet* createAdvertisePacket(uint16_t receiverId, uint8_t hopCountToGateway);
