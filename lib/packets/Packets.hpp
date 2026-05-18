@@ -75,6 +75,14 @@ namespace Packets {
        time_t lastSeenTime;
     } RegisterNodePacketContent_t;
 
+    typedef struct{
+        float temperatureC;
+        float humidityPercent;
+        float pressurehPa;
+        float gasResistanceKOhms;
+        time_t readingTime;
+    } SensorDataPacketContent_t;
+
     //list with packets where no ack is expected
     const PacketType_t noAckExpectedPacketTypes[] = {
         PACKET_TYPE_ACK,
@@ -100,6 +108,7 @@ namespace Packets {
             static Packet* createDiscoverPacket();
             static Packet* createToBeForwardedPacket(const Packet &original);
             static Packet* createRegisterNodePacket(uint16_t receiverId);
+            static Packet* createSensorDataPacket(uint16_t receiverId, SensorDataPacketContent_t sensorData);
             std::list<Packet*>* handle(std::list<uint32_t>& ackedPacketIdentifiers, std::function<void(Packet*)> masterNodeHandler = nullptr);
             void markAsSent();
             void printHead();

@@ -61,6 +61,7 @@ namespace Packets {
         MeshUtils::availableNodes.addOrUpdateNode(this->head.senderId, this->info.rssi, this->info.snr);
         if (this->head.receiverId != MeshUtils::nodeID && this->head.receiverId != MeshUtils::broadcastID) {
             //packet not for me, ignore
+            S_DEBUGF("[PACKET %08X]\n\tNot for me (receiverId: %04X), ignoring\n", this->getGlobalPacketIdentifier(), this->head.receiverId);
             return responsePackets;
         }
 
@@ -75,7 +76,7 @@ namespace Packets {
             case PACKET_TYPE_SENSORDATA:{
                 //Sensor packets are only for gateway nodes, forward if not gateway
                 if (!MeshUtils::isGateway) {
-                    S_DEBUGF("[SENSOR DATA PACKET %08X]\n\tfrom %d\n\tforwarding to %d\n", this->getGlobalPacketIdentifier(), this->head.senderId, MeshUtils::nextHopID);
+                    S_DEBUGF("[SENSOR DATA PACKET %08X, RSSI: %d, SNR: %2f]\n\tfrom %d\n\tforwarding to %d\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr, this->head.senderId, MeshUtils::nextHopID);
                     responsePackets->push_back(createToBeForwardedPacket(*this));
                 } else {
                     masterNodeHandler(this);
@@ -84,17 +85,17 @@ namespace Packets {
             }
             case PACKET_TYPE_ACK: {
                 AckPacketContent_t* ackContent = (AckPacketContent_t*)this->head.data;
-                S_DEBUGF("[ACK PACKET %08X]\n\tAcknowledging Packet %08X\n", this->getGlobalPacketIdentifier(), ackContent->ackedPacketIdentifier);
+                S_DEBUGF("[ACK PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n\tAcknowledging Packet %08X\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr, ackContent->ackedPacketIdentifier);
                 TimeUtils::setLocalTimeFromRemote(ackContent->timeSyncInfo);
                 ackedPacketIdentifiers.push_back(ackContent->ackedPacketIdentifier);
                 break;
             }
             case PACKET_TYPE_COMMAND:{
-                // Handle command packet
+                S_DEBUGF("[COMMAND PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr);
                 break;
             }
             case PACKET_TYPE_DISCOVER:{
-                S_DEBUGF("[DISCOVER PACKET %08X]\n", this->getGlobalPacketIdentifier());
+                S_DEBUGF("[DISCOVER PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr);
                 if (MeshUtils::hasConnection){
                     responsePackets->push_back(createAdvertisePacket(this->head.senderId, MeshUtils::hopCountToGateway));
                 }
@@ -104,7 +105,7 @@ namespace Packets {
                 AdvertisePacketContent_t* data = (AdvertisePacketContent_t*)this->head.data;
                 MeshUtils::availableNodes.addOrUpdateNode(this->head.senderId, this->info.rssi, this->info.snr, data->hopCountToGateway, data->wakeCycleConfig);
                 TimeUtils::setLocalTimeFromRemoteAccumulated(data->timeSyncInfo);
-                S_DEBUGF("[ADVERTISE PACKET %08X]\n", this->getGlobalPacketIdentifier());
+                S_DEBUGF("[ADVERTISE PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr);
                 S_DEBUGF("\tHops to gateway: %d\n", data->hopCountToGateway);
                 S_DEBUGF("\tRemote Node Time: %s", ctime(&(data->timeSyncInfo.remoteNodeTime)));
                 S_DEBUGF("\tWake Duration: %d seconds, Sleep Duration: %d seconds\n", data->wakeCycleConfig.wakeDurationSeconds, data->wakeCycleConfig.sleepDurationSeconds);
@@ -126,7 +127,7 @@ namespace Packets {
             }
 
             case PACKET_TYPE_DEBUG_MESSAGE:{
-                S_DEBUGF("[DEBUG PACKET]\n\tMessage: %.*s\n", this->head.dataLength, this->head.data);
+                S_DEBUGF("[DEBUG PACKET %08X]\n\tMessage: %.*s\n", this->getGlobalPacketIdentifier(), this->head.dataLength, this->head.data);
                 break;
             }
 
@@ -226,6 +227,18 @@ namespace Packets {
             PACKET_TYPE_DEBUG_MESSAGE,
             dataLength,
             data
+        );
+    }
+
+    Packet* Packet::createSensorDataPacket(uint16_t receiverId, SensorDataPacketContent_t sensorData) {
+        SensorDataPacketContent_t* content = new SensorDataPacketContent_t(sensorData);
+        return new Packet(
+            MeshUtils::nodeID,
+            receiverId,
+            MeshUtils::nodeID,
+            PACKET_TYPE_SENSORDATA,
+            sizeof(SensorDataPacketContent_t),
+            (uint8_t*)content
         );
     }
 

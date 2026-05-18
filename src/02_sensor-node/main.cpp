@@ -3,6 +3,7 @@
 #include "Node.hpp"
 #include "debug_helper.hpp"
 #include "SX1262_helper.hpp"
+#include "sensor_helper.hpp"
 #include "Packets.hpp"
 #include "Mesh.hpp"
 
@@ -32,12 +33,17 @@ void loop() {
     sensorNode.nodeState = Node::NODE_STATE_IDLE;
     unsigned long wakeUpTime = millis();
     time_t currentTime = TimeUtils::getCurrentTime();
-    Packets::Packet* debugPacket = Packets::Packet::createDebugMessagePacket(
-            "Test debug message. Current Time: " + String(ctime(&currentTime)),
-            MeshUtils::nextHopID,
-            Packets::DEBUG_MESSAGE_TYPE_INFO
-    );
-    sensorNode.sendQueue.add(debugPacket);
+    
+    SensorHelper::performReading();
+    Packets::Packet* sensorDataPacket = Packets::Packet::createSensorDataPacket(MeshUtils::nextHopID, {
+        .temperatureC = SensorHelper::bme.temperature,
+        .humidityPercent = SensorHelper::bme.humidity,
+        .pressurehPa = SensorHelper::bme.pressure / 100.0,
+        .gasResistanceKOhms = SensorHelper::bme.gas_resistance / 1000.0,
+        .readingTime = currentTime
+    });
+
+    sensorNode.sendQueue.add(sensorDataPacket);
     
     sensorNode.sendQueue.newCycle();
     

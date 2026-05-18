@@ -29,6 +29,15 @@ void masterNodeHandler(Packets::Packet* packet){
         };
         WebUtils::Request::createRegisterNodeRequest(registerInfo).queue();
     }
+    if (packet->head.packetType == Packets::PACKET_TYPE_SENSORDATA){
+        Packets::SensorDataPacketContent_t* content = (Packets::SensorDataPacketContent_t*)packet->head.data;
+        S_DEBUGF("[SENSOR DATA %8X, RSSI: %.2f dbm, SNR: %.2f]\n", packet->getGlobalPacketIdentifier(), packet->info.rssi, packet->info.snr);
+        S_DEBUGF("\tTemperature: %.2f C\n", content->temperatureC);
+        S_DEBUGF("\tHumidity: %.2f %%\n", content->humidityPercent);
+        S_DEBUGF("\tPressure: %.2f hPa\n", content->pressurehPa);
+        S_DEBUGF("\tGas Resistance: %.2f kOhms\n", content->gasResistanceKOhms);
+        //WebUtils::Request::createSensorDataUploadRequest(packet).queue();
+    }
 }
 
 void setup() {
