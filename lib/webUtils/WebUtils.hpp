@@ -14,7 +14,7 @@ namespace WebUtils {
 
     class Request;
 
-    inline const char* serverURL = "10.239.19.52";
+    inline const char* serverURL = "10.0.0.123";
     inline const int serverPort = 3000;
     inline const char* registerEndpoint = "/api/nodes/register";
     inline const char* readingEndpoint = "/api/readings";

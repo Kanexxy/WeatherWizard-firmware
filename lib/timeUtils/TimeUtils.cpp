@@ -34,6 +34,14 @@ namespace TimeUtils {
         return (currentTime % getCycleDurationSeconds()) <= wakeCycleConfig.wakeDurationSeconds;
     }
 
+    bool isInCooldown(Cooldown_t& cooldown){
+        return millis() - cooldown.lastEventTimeMs < cooldown.durationMs;
+    }
+
+    void startCooldown(Cooldown_t& cooldown){
+        cooldown.lastEventTimeMs = millis();
+    }
+
     void setLocalTimeFromRemote(SyncInfo_t syncInfo){ 
         struct timeval tv = { .tv_sec = syncInfo.remoteNodeTime, .tv_usec = syncInfo.estimatedTimeOnAirUs};
         if (tv.tv_usec >= 1000000) {

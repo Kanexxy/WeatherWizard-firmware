@@ -17,6 +17,7 @@ namespace Node{
         NODE_STATE_SENSING,
         NODE_STATE_SENDING,
         NODE_STATE_RECEIVING,
+        NODE_STATE_RECEIVING_COLLISION,
         NODE_STATE_SLEEPING
     } nodeState_t;
 
@@ -37,7 +38,8 @@ namespace Node{
             static void preTransmitCallback(LoRaHelper::SX1262_helper* callingRadio, byte* data, uint8_t length);
 
             bool handleRadioIRQ(LoRaHelper::SX1262_helper &radio);
-            bool sendNextPacketOrStartReceive(LoRaHelper::SX1262_helper &radio);
+            bool sendNextPacketIfNeeded(LoRaHelper::SX1262_helper &radio);
+            bool startReceiveIfNeeded(LoRaHelper::SX1262_helper &radio);
             bool handleReceivedPackets();
 
             bool tick(LoRaHelper::SX1262_helper &radio);

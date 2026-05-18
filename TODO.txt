@@ -5,5 +5,4 @@ LastSeen timestamp in AvailableNodes will malfunction after 49 days due to milli
 NodeID uses last 2 Bytes of MAC-Address of the ESP (meaning last two bytes of chipID),
 change to Post-upload-script requesting new, unique ID from server and write in into eeprom
 
-Potential Bug: Ack Packet gets processed possibly after send gets started, need to process all ack packets before sending.
 Potential Bug: 0ms TX delay: CAD Done in TX_CAD_1 state. Proceeding to RX delay with timeout 0 ms

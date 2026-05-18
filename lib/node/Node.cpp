@@ -18,13 +18,13 @@ namespace Node{
             Packets::AdvertisePacketContent_t* content = (Packets::AdvertisePacketContent_t*)payloadData;
             content->timeSyncInfo.remoteNodeTime = currentTime;
             content->timeSyncInfo.estimatedTimeOnAirUs = callingRadio->getTimeOnAir(length);
-            S_DEBUGF("Pre-TX: Updated Advertise packet timestamp to %ld, ToA: %d ms\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
+            S_DEBUGF("Pre-TX: Updated Advertise packet timestamp to %ld, ToA: %d us\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
         } 
         else if (head->packetType == Packets::PACKET_TYPE_ACK) {
             Packets::AckPacketContent_t* content = (Packets::AckPacketContent_t*)payloadData;
             content->timeSyncInfo.remoteNodeTime = currentTime;
             content->timeSyncInfo.estimatedTimeOnAirUs = callingRadio->getTimeOnAir(length);
-            S_DEBUGF("Pre-TX: Updated Ack packet timestamp to %ld, ToA: %d ms\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
+            S_DEBUGF("Pre-TX: Updated Ack packet timestamp to %ld, ToA: %d us\n", currentTime, content->timeSyncInfo.estimatedTimeOnAirUs);
         } else if (head->packetType == Packets::PACKET_TYPE_REGISTER_NODE){
             Packets::RegisterNodePacketContent_t* content = (Packets::RegisterNodePacketContent_t*)payloadData;
             content->lastSeenTime = currentTime;
@@ -81,12 +81,14 @@ namespace Node{
         
             case LoRaHelper::ERR_TX_CAD_DETECTED: {
                 S_DEBUGF("Channel activity detected during polite send, aborting transmission.\n");
-                nodeState = NODE_STATE_RECEIVING;
+                TimeUtils::startCooldown(TimeUtils::collisionCooldown);
+                nodeState = NODE_STATE_RECEIVING_COLLISION;
                 break;
             }
         
             case LoRaHelper::PROGRESS_TX_COMPLETE: {
                 S_DEBUGF("Transmission of packet 0x%08X complete.\n", currentlySendingPacket->getGlobalPacketIdentifier());
+                TimeUtils::startCooldown(TimeUtils::sendCooldown);
                 if (!currentlySendingPacket->isAckExpected())
                 {
                     sendQueue.erase(currentlySendingPacket->getGlobalPacketIdentifier());
@@ -107,15 +109,9 @@ namespace Node{
         return true;
     }
 
-    bool Node::sendNextPacketOrStartReceive(LoRaHelper::SX1262_helper &radio){ //if node is in idle, try to send next packet in queue or start receiving if queue is empty
+    bool Node::startReceiveIfNeeded(LoRaHelper::SX1262_helper &radio){ //if node is in idle, try to send next packet in queue or start receiving if queue is empty
         if (nodeState != NODE_STATE_IDLE) return false;
 
-        auto nextPacket = sendQueue.next();
-        if (nextPacket != nullptr){
-            currentlySendingPacket = nextPacket;
-            Node::sendPacket(radio, currentlySendingPacket);
-            return true;
-        }
         LoRaHelper::radioState_t currentRadioState = radio.getCurrentState();
         if (currentRadioState == LoRaHelper::STATE_IDLE){
             S_DEBUGF("Node and radio are idle, starting receive...\n");
@@ -125,6 +121,24 @@ namespace Node{
         if (currentRadioState != LoRaHelper::STATE_RX_RECEIVING){
             S_DEBUGF("ERROR: Radio in unexpected state %d while node idle, resetting...\n", currentRadioState);
             radio.initialize();
+            return true;
+        }
+        return false;
+    }
+
+    bool Node::sendNextPacketIfNeeded(LoRaHelper::SX1262_helper &radio){
+        
+        if (nodeState == NODE_STATE_RECEIVING_COLLISION && !TimeUtils::isInCooldown(TimeUtils::collisionCooldown)){
+            S_DEBUGF("Collision cooldown expired, moving from RECEIVING_COLLISION to IDLE state.\n");
+            nodeState = NODE_STATE_IDLE;
+        }
+
+        if (nodeState != NODE_STATE_IDLE) return false;
+
+        auto nextPacket = sendQueue.next();
+        if (nextPacket != nullptr && (!TimeUtils::isInCooldown(TimeUtils::sendCooldown) || MeshUtils::isGateway)){ //send packet if one is available, unless its a non-gateway node in send cooldown
+            currentlySendingPacket = nextPacket;
+            Node::sendPacket(radio, currentlySendingPacket);
             return true;
         }
         return false;
@@ -153,8 +167,9 @@ namespace Node{
     bool Node::tick(LoRaHelper::SX1262_helper &radio){
         bool handled = false;
         handled |= handleRadioIRQ(radio);
-        handled |= sendNextPacketOrStartReceive(radio);
+        handled |= startReceiveIfNeeded(radio);
         handled |= handleReceivedPackets();
+        handled |= sendNextPacketIfNeeded(radio);
         return handled;
     }
 };
