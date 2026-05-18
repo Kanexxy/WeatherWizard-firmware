@@ -269,10 +269,10 @@ namespace LoRaHelper {
     }
 
     void SX1262_helper::initialize(){
-        //dont initialize SPI if using Heltec board, because it uses the default SPI pins
-        //#if !defined(ARDUINO_HELTEC_WIFI_LORA_32_V3)
-        // SPI.begin(WW_SX1262_SCK, WW_SX1262_MISO, WW_SX1262_MOSI, WW_SX1262_CS);
-        //#endif
+        // Heltec uses board-default SPI pins; custom boards need explicit SPI init.
+        #if !defined(HELTEC_V3_USED)
+            SPI.begin(WW_SX1262_SCK, WW_SX1262_MISO, WW_SX1262_MOSI, WW_SX1262_CS);
+        #endif
 
         S_DEBUGF("[LoRaHelper Init]\n\tInitializing SX1262...\n");
         haltIfError(this->begin());

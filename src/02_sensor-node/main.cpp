@@ -6,15 +6,15 @@
 #include "Packets.hpp"
 #include "Mesh.hpp"
 
-//LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(HELTEC_NSS_PIN, HELTEC_DIO0_PIN, HELTEC_RESET_PIN, HELTEC_BUSY_PIN));
+LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(SX1262_NSS_PIN, SX1262_DIO_PIN, SX1262_RESET_PIN, SX1262_BUSY_PIN));
 
-LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(WW_SX1262_CS, WW_SX1262_DIO1, WW_SX1262_RESET, WW_SX1262_BUSY));
 Node::Node sensorNode;
 void findAndSetHopToGateway();
 
 void setup() {
     Serial.begin(115200);
-    S_DEBUGF("Starting Master Node...\n");
+    S_DEBUGF("Starting Sensor Node...\n");
+    SensorHelper::initialize();
     MeshUtils::initMeshVars(false);
     sensorNode.nodeState = Node::NODE_STATE_INITIALIZING;
     findAndSetHopToGateway();

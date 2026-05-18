@@ -10,7 +10,7 @@
 #include "WebUtils.hpp"
 #include "secrets.hpp"
 
-LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(HELTEC_NSS_PIN, HELTEC_DIO0_PIN, HELTEC_RESET_PIN, HELTEC_BUSY_PIN));
+LoRaHelper::SX1262_helper radio = LoRaHelper::SX1262_helper(new Module(SX1262_NSS_PIN, SX1262_DIO_PIN, SX1262_RESET_PIN, SX1262_BUSY_PIN));
 
 void masterNodeHandler(Packets::Packet* packet);
 
