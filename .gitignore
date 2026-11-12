@@ -1,4 +1,5 @@
 .pio
 .vscode
 firmware.map
-
+lib/secrets/secrets.hpp
+debug_data

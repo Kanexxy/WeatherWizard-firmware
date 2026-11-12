@@ -11,11 +11,14 @@
 
 namespace Packets {
 
-    class Packet;
+
     class PacketQueue : public std::unordered_map<uint32_t, Packet*> {
         public:
             PacketQueue() = default;
             void newCycle();
+            void add(Packet* packet);
             Packet* next();
+            void addPacketsFromList(std::list<Packet*>* packets);
+            void removePacketsFromIdentifierList(const std::list<uint32_t>& identifiers);
     };
 }
