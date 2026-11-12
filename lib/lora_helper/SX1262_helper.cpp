@@ -323,6 +323,25 @@ namespace LoRaHelper {
         S_DEBUGF("\tInitialization completed successfully.\n");
     }
 
+    void SX1262_helper::cleanAndIdle() {
+        this->clearIrqFlags(this->getIrqFlags());
+        this->standby();
+        this->currentState = STATE_IDLE;
+        this->interruptIsPending = false;
+
+        if (this->_tx_data != nullptr && this->_tx_length != 0){
+            delete[] this->_tx_data;
+            this->_tx_data = nullptr;
+            this->_tx_length = 0;
+        }
+
+        if (this->_rx_data != nullptr && this->_rx_length != 0){
+            delete[] this->_rx_data;
+            this->_rx_data = nullptr;
+            this->_rx_length = 0;
+        }
+    }
+
     uint32_t SX1262_helper::msToSX1262TimeoutValue(uint32_t ms) {
         // SX1262 timeout value is in units of 15.625 us
         return (ms * 1000) / 15.625;

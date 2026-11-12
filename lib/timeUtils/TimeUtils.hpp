@@ -8,8 +8,8 @@
 
 namespace TimeUtils {
 
-    inline const unsigned int defaultWakeDurationSeconds = 5;
-    inline const unsigned int defaultSleepDurationSeconds = 10;
+    inline const unsigned int defaultWakeDurationSeconds = 10;
+    inline const unsigned int defaultSleepDurationSeconds = 20;
     inline const unsigned long defaultSendCooldownMilliseconds = 500;
     inline const unsigned long defaultCollisionCooldownMilliseconds = 300;
     inline const unsigned int defaultCycleDurationSeconds = defaultWakeDurationSeconds + defaultSleepDurationSeconds;

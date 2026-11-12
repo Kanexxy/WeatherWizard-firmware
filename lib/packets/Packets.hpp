@@ -6,14 +6,14 @@
 #include "TimeUtils.hpp"
 #include "Mesh.hpp"
 
-namespace Packets {
+#include "ICommandHandler.hpp"
 
-    class PacketQueue;
+namespace Packets {
 
     typedef enum {
         PACKET_TYPE_SENSORDATA,
         PACKET_TYPE_ACK,
-        PACKET_TYPE_COMMAND,        // For future use, e.g. to send commands from gateway to nodes
+        PACKET_TYPE_COMMAND,
         PACKET_TYPE_DISCOVER,
         PACKET_TYPE_ADVERTISE,
         PACKET_TYPE_REGISTER_NODE,
@@ -43,11 +43,6 @@ namespace Packets {
     } PacketInfo_t;
 
     typedef enum {
-        COMMAND_TYPE_FORWARD,
-        COMMAND_TYPE_UPDATE_RECEIVER_ID,
-    } CommandType_t;
-
-    typedef enum {
         DEBUG_MESSAGE_TYPE_INFO,
         DEBUG_MESSAGE_TYPE_WARNING,
         DEBUG_MESSAGE_TYPE_ERROR,
@@ -70,7 +65,6 @@ namespace Packets {
     } AckPacketContent_t;
 
     typedef struct{
-       uint16_t nodeId;
        uint16_t nextNodeId;
        time_t lastSeenTime;
     } RegisterNodePacketContent_t;
@@ -83,12 +77,18 @@ namespace Packets {
         time_t readingTime;
     } SensorDataPacketContent_t;
 
+    typedef struct{
+        CommandType_t commandType;
+        uint16_t commandData;
+    } CommandPacketContent_t;
+
     //list with packets where no ack is expected
     const PacketType_t noAckExpectedPacketTypes[] = {
         PACKET_TYPE_ACK,
         PACKET_TYPE_DISCOVER,
         PACKET_TYPE_ADVERTISE,
         PACKET_TYPE_MALFORMED,
+        PACKET_TYPE_COMMAND
     };
 
     class Packet {
@@ -109,13 +109,14 @@ namespace Packets {
             static Packet* createToBeForwardedPacket(const Packet &original);
             static Packet* createRegisterNodePacket(uint16_t receiverId);
             static Packet* createSensorDataPacket(uint16_t receiverId, SensorDataPacketContent_t sensorData);
-            std::list<Packet*>* handle(std::list<uint32_t>& ackedPacketIdentifiers, std::function<void(Packet*)> masterNodeHandler = nullptr);
+            static Packet* createCommandPacket(uint16_t receiverId, CommandType_t commandType, uint16_t commandData);
+            void handle(ICommandHandler& commandHandler);
+            void handleCommandPacket(ICommandHandler& commandHandler);
             void markAsSent();
             void printHead();
 
-        
         private:
-            static inline uint8_t nextPacketId = 0;
+            static inline uint16_t nextPacketId = 0;
             static Packet mergePacket(Packet *packet1, Packet *packet2);
     };
 }

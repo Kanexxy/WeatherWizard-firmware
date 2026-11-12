@@ -43,7 +43,13 @@ namespace Node{
         return;
     }
 
-    void Node::sendPacket(LoRaHelper::SX1262_helper &radio, const Packets::Packet* packet){
+    void Node::sendPacket(LoRaHelper::SX1262_helper &radio, Packets::Packet* packet){
+        if (packet->head.receiverId == MeshUtils::nodeID){ //packet is actually meant for this node, not to be sent, add to receive queue instead, feature meant for commands
+            S_DEBUGF("Packet ID %08X is actually meant for this node, adding to receive queue instead of sending.\n", packet->getGlobalPacketIdentifier());
+            this->handleCommand(COMMAND_DELETE_PACKET_FROM_SEND_QUEUE, (const uint8_t*)&packet->head.packetId, sizeof(uint16_t));
+            this->receiveQueue.add(packet);
+            return;
+        }
         byte* data = new byte[sizeof(Packets::PacketHead_t) + packet->head.dataLength];
         memcpy(data, &(packet->head), sizeof(Packets::PacketHead_t));
         ((Packets::PacketHead_t*)data)->data = nullptr;
@@ -101,6 +107,12 @@ namespace Node{
                 break;
             }
 
+            case LoRaHelper::ERR_UNHANDLED_INTERRUPT: {
+                S_DEBUGF("Received unhandled interrupt progress code %d from radio, going to idle state...\n", progress);
+                Node::idle(radio);
+                break;
+            }
+
             default:{
                 S_DEBUGF("Unhandled radio IRQ progress code: %d\n", progress);
                 break;
@@ -150,15 +162,9 @@ namespace Node{
         Packets::Packet* packetToHandle = receiveQueue.begin()->second;
         S_DEBUGF("Handling received packet %04X\n", packetToHandle->getGlobalPacketIdentifier());
 
-        std::list<uint32_t> ackedPacketIdentifiers;
-        auto responsePackets = packetToHandle->handle(ackedPacketIdentifiers, masterNodeHandler);
-        
-        sendQueue.removePacketsFromIdentifierList(ackedPacketIdentifiers);
-        sendQueue.addPacketsFromList(responsePackets);
+        packetToHandle->handle(*this);
         
         receiveQueue.erase(packetToHandle->getGlobalPacketIdentifier());
-        delete responsePackets; //only delete the list, contained ponters still valid and added to sendQueue
-        responsePackets = nullptr;
         delete packetToHandle;
         packetToHandle = nullptr;
         return true;
@@ -171,5 +177,73 @@ namespace Node{
         handled |= handleReceivedPackets();
         handled |= sendNextPacketIfNeeded(radio);
         return handled;
+    }
+
+    void Node::idle(LoRaHelper::SX1262_helper &radio){
+        radio.cleanAndIdle();
+        nodeState = NODE_STATE_IDLE;
+    }
+
+    void Node::handleCommand(const CommandType_t type, const uint8_t* data, const uint8_t len){
+        switch (type){
+            case COMMAND_ADD_PACKET_TO_SEND_QUEUE:{
+                sendQueue.add((Packets::Packet*)data);
+                S_DEBUGF("Added packet %04X to send queue via command handler\n", ((Packets::Packet*)data)->getGlobalPacketIdentifier());
+                break;
+            }
+
+            case COMMAND_DELETE_PACKET_FROM_SEND_QUEUE:{
+                uint32_t packetIdToDelete = *(uint32_t*)data;
+                sendQueue.erase(packetIdToDelete);
+                S_DEBUGF("Deleted packet %04X from send queue via command handler\n", packetIdToDelete);
+                break;
+            }
+
+            case COMMAND_USE_MASTER_NODE_HANDLER:{
+                if (masterNodeHandler != nullptr){
+                    masterNodeHandler((Packets::Packet*)data);
+                    S_DEBUGF("Handled packet %04X with master node handler via command handler\n", ((Packets::Packet*)data)->getGlobalPacketIdentifier());
+                } else {
+                    S_DEBUGF("Master node handler not set, cannot handle packet %04X\n", ((Packets::Packet*)data)->getGlobalPacketIdentifier());
+                }
+                break;
+            }
+
+            case COMMAND_RESET_NODE:{
+                S_DEBUGF("Reset command received, resetting node...\n");
+                ESP.restart();
+                break;
+            }
+
+            case COMMAND_UPDATE_RECEIVER_ID:{
+                uint16_t newReceiverId = *(uint16_t*)data;
+                S_DEBUGF("Updating receiver ID to %04X via command handler\n", newReceiverId);
+                MeshUtils::nextHopID = newReceiverId;
+                sendQueue.add(Packets::Packet::createRegisterNodePacket(MeshUtils::nextHopID));
+                break;
+            }
+
+            case COMMAND_SEND_RESET_COMMAND_PACKET:{
+                uint16_t targetNodeId = ((SendCommandContent_t*)data)->targetNodeId;
+                Packets::Packet* resetCommandPacket = Packets::Packet::createCommandPacket(targetNodeId, COMMAND_RESET_NODE, 0);
+                sendQueue.add(resetCommandPacket);
+                S_DEBUGF("Added reset command packet for node %04X to send queue via command handler\n", targetNodeId);
+                break;
+            }
+
+            case COMMAND_SEND_UPDATE_RECEIVER_ID_COMMAND_PACKET:{
+                uint16_t targetNodeId = ((SendCommandContent_t*)data)->targetNodeId;
+                uint16_t newReceiverId = ((SendCommandContent_t*)data)->commandData;
+                Packets::Packet* updateReceiverIdPacket = Packets::Packet::createCommandPacket(targetNodeId, COMMAND_UPDATE_RECEIVER_ID, newReceiverId);
+                sendQueue.add(updateReceiverIdPacket);
+                S_DEBUGF("Added update receiver ID command packet for node %04X to send queue via command handler\n", targetNodeId);
+                break;
+            }
+
+            default:{
+                S_DEBUGF("Node received unknown command type %d\n", type);
+                break;
+            }
+        }
     }
 };

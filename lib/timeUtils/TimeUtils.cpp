@@ -1,14 +1,13 @@
 #include "TimeUtils.hpp"
 
 namespace TimeUtils {
-
     bool initializeTimeFromNTP() {
         if (WiFi.status() != WL_CONNECTED) {
             S_DEBUGF("WiFi not connected, cannot initialize time from NTP.\n");
             return false;
         }
         S_DEBUGF("Initializing time from NTP server %s...", ntpServer);
-        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", ntpServer);
         time_t now = time(nullptr);
         //wait until time is set and is after 01.01.1970 (Unix epoch start)
         while (now < 24 * 3600) { 

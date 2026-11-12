@@ -11,7 +11,7 @@
 
 namespace Packets {
 
-    class Packet;
+
     class PacketQueue : public std::unordered_map<uint32_t, Packet*> {
         public:
             PacketQueue() = default;

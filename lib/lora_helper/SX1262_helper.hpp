@@ -92,6 +92,7 @@ namespace LoRaHelper {
             SX1262_helper(Module* mod) : SX1262(mod) {}
 
             void initialize();
+            void cleanAndIdle();
             bool startPoliteTransmit(const byte *data, uint8_t length, PreTransmitCallback_t callback = nullptr);
             bool startIdleReceive();
             progress_t handlePendingIRQ();

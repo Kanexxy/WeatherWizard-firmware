@@ -55,31 +55,31 @@ namespace Packets {
         return ((uint32_t)this->head.sourceId << 16) | this->head.packetId;
     }
     //let function also take a function pointer to a handler in case it is a masternode, argument is packet
-    std::list<Packet*>* Packet::handle(std::list<uint32_t>& ackedPacketIdentifiers, std::function<void(Packet*)> masterNodeHandler) {
-        std::list<Packet*>* responsePackets = new std::list<Packet*>();
+    void Packet::handle(ICommandHandler& commandHandler) {
+        //std::list<Packet*>* responsePackets = new std::list<Packet*>();
 
         MeshUtils::availableNodes.addOrUpdateNode(this->head.senderId, this->info.rssi, this->info.snr);
         if (this->head.receiverId != MeshUtils::nodeID && this->head.receiverId != MeshUtils::broadcastID) {
             //packet not for me, ignore
             S_DEBUGF("[PACKET %08X]\n\tNot for me (receiverId: %04X), ignoring\n", this->getGlobalPacketIdentifier(), this->head.receiverId);
-            return responsePackets;
+            return;
         }
 
-        if (this->isAckExpected()) responsePackets->push_back(createAckPacket(*this));
+        if (this->isAckExpected()) commandHandler.handleCommand(COMMAND_ADD_PACKET_TO_SEND_QUEUE, (const uint8_t*)Packet::createAckPacket(*this), sizeof(Packet));
 
         switch (this->head.packetType) {
 
             case PACKET_TYPE_MALFORMED:{
-                S_DEBUGF("[MALFORMED PACKET]\n\tfrom %d\n", this->head.senderId);
+                S_DEBUGF("[MALFORMED PACKET]\n\tfrom %04X\n", this->head.senderId);
                 break;
             }
             case PACKET_TYPE_SENSORDATA:{
                 //Sensor packets are only for gateway nodes, forward if not gateway
                 if (!MeshUtils::isGateway) {
-                    S_DEBUGF("[SENSOR DATA PACKET %08X, RSSI: %d, SNR: %2f]\n\tfrom %d\n\tforwarding to %d\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr, this->head.senderId, MeshUtils::nextHopID);
-                    responsePackets->push_back(createToBeForwardedPacket(*this));
+                    S_DEBUGF("[SENSOR DATA PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n\tfrom %04X\n\tforwarding to %04X\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr, this->head.senderId, MeshUtils::nextHopID);
+                    commandHandler.handleCommand(COMMAND_ADD_PACKET_TO_SEND_QUEUE, (const uint8_t*)createToBeForwardedPacket(*this), sizeof(Packet));
                 } else {
-                    masterNodeHandler(this);
+                    commandHandler.handleCommand(COMMAND_USE_MASTER_NODE_HANDLER, (const uint8_t*)this, sizeof(Packet));
                 }
                 break;
             }
@@ -87,17 +87,25 @@ namespace Packets {
                 AckPacketContent_t* ackContent = (AckPacketContent_t*)this->head.data;
                 S_DEBUGF("[ACK PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n\tAcknowledging Packet %08X\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr, ackContent->ackedPacketIdentifier);
                 TimeUtils::setLocalTimeFromRemote(ackContent->timeSyncInfo);
-                ackedPacketIdentifiers.push_back(ackContent->ackedPacketIdentifier);
+                //ackedPacketIdentifiers.push_back(ackContent->ackedPacketIdentifier);
+                uint32_t ackedPacketId = ackContent->ackedPacketIdentifier;
+                commandHandler.handleCommand(COMMAND_DELETE_PACKET_FROM_SEND_QUEUE, (const uint8_t*)&ackedPacketId, sizeof(uint32_t));
+
                 break;
             }
             case PACKET_TYPE_COMMAND:{
                 S_DEBUGF("[COMMAND PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr);
+                this->handleCommandPacket(commandHandler);
                 break;
             }
             case PACKET_TYPE_DISCOVER:{
                 S_DEBUGF("[DISCOVER PACKET %08X, RSSI: %.2f dbm, SNR: %.2f]\n", this->getGlobalPacketIdentifier(), this->info.rssi, this->info.snr);
                 if (MeshUtils::hasConnection){
-                    responsePackets->push_back(createAdvertisePacket(this->head.senderId, MeshUtils::hopCountToGateway));
+                    commandHandler.handleCommand(
+                        COMMAND_ADD_PACKET_TO_SEND_QUEUE, 
+                        (const uint8_t*)createAdvertisePacket(this->head.senderId, MeshUtils::hopCountToGateway), 
+                        sizeof(Packet)
+                    );
                 }
                 break;
             }
@@ -114,15 +122,15 @@ namespace Packets {
 
             case PACKET_TYPE_REGISTER_NODE:{
                 if (!MeshUtils::isGateway){
-                    S_DEBUGF("Forwarding register-node-packet %08X from node %d\n", this->getGlobalPacketIdentifier(), this->head.sourceId);
-                    responsePackets->push_back(createToBeForwardedPacket(*this));
+                    S_DEBUGF("Forwarding register-node-packet %08X from node %04X\n", this->getGlobalPacketIdentifier(), this->head.sourceId);
+                    commandHandler.handleCommand(
+                        COMMAND_ADD_PACKET_TO_SEND_QUEUE, 
+                        (const uint8_t*)createToBeForwardedPacket(*this), 
+                        sizeof(Packet)
+                    );
                     break;
                 }
-                if (masterNodeHandler == nullptr) {
-                    S_DEBUGF("Received register-node-packet %08X but no master node handler defined\n", this->getGlobalPacketIdentifier());
-                    break;
-                }
-                masterNodeHandler(this);
+                commandHandler.handleCommand(COMMAND_USE_MASTER_NODE_HANDLER, (const uint8_t*)this, sizeof(Packet));
                 break;
             }
 
@@ -136,7 +144,28 @@ namespace Packets {
                 break;
             }
         }
-        return responsePackets;
+        return;
+    }
+
+    void Packet::handleCommandPacket(ICommandHandler& commandHandler) {
+        CommandPacketContent_t* commandContent = (CommandPacketContent_t*)this->head.data;
+        switch (commandContent->commandType) {
+            case COMMAND_RESET_NODE:{
+                commandHandler.handleCommand(COMMAND_RESET_NODE, nullptr, 0);
+                break;
+            }
+
+            case COMMAND_UPDATE_RECEIVER_ID:{
+                uint16_t newReceiverId = commandContent->commandData;
+                commandHandler.handleCommand(COMMAND_UPDATE_RECEIVER_ID, (const uint8_t*)&newReceiverId, sizeof(uint16_t));
+                break;
+            }
+
+            default:{
+                S_DEBUGF("Received unknown command type %d with data %d\n", commandContent->commandType, commandContent->commandData);
+                break;
+            }
+        }
     }
 
     Packet* Packet::createAckPacket(const Packet &original) {
@@ -205,7 +234,6 @@ namespace Packets {
         RegisterNodePacketContent_t* content = new RegisterNodePacketContent_t;
         content->lastSeenTime = 0; //Will be set just before transmission
         content->nextNodeId = MeshUtils::nextHopID;
-        content->nodeId = MeshUtils::nodeID;
         return new Packet(
             MeshUtils::nodeID,
             receiverId,
@@ -238,6 +266,20 @@ namespace Packets {
             MeshUtils::nodeID,
             PACKET_TYPE_SENSORDATA,
             sizeof(SensorDataPacketContent_t),
+            (uint8_t*)content
+        );
+    }
+
+    Packet* Packet::createCommandPacket(uint16_t receiverId, CommandType_t commandType, uint16_t commandData) {
+        CommandPacketContent_t* content = new CommandPacketContent_t;
+        content->commandType = commandType;
+        content->commandData = commandData;
+        return new Packet(
+            MeshUtils::nodeID,
+            receiverId,
+            MeshUtils::nodeID,
+            PACKET_TYPE_COMMAND,
+            sizeof(CommandPacketContent_t),
             (uint8_t*)content
         );
     }

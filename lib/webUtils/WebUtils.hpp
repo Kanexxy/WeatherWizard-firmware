@@ -8,6 +8,7 @@
 #include <list>
 
 #include "debug_helper.hpp"
+#include "ICommandHandler.hpp"
 
 
 namespace WebUtils {
@@ -26,6 +27,16 @@ namespace WebUtils {
         time_t registrationTime;
     } RegisterNodeInfo_t;
 
+    typedef struct {
+        uint16_t nodeID;
+        float temperatureC;
+        float humidityPercent;
+        float pressurehPa;
+        float gasResistanceKOhms;
+        int battery_level_mv;
+        time_t readingTime;
+    } SensorReading_t;
+
     inline std::list<Request> requestQueue;
     inline TaskHandle_t requestProcessingTaskHandle = nullptr;
     
@@ -35,8 +46,10 @@ namespace WebUtils {
     class Request{
 
         public:
-            Request(String endpoint, String method, String jsonPayload) : endpoint(endpoint), method(method), jsonPayload(jsonPayload) {}
-            static Request createRegisterNodeRequest(RegisterNodeInfo_t nodeInfo);
+            Request(String endpoint, String method, String jsonPayload, ICommandHandler& commandHandler) : endpoint(endpoint), method(method), jsonPayload(jsonPayload), commandHandler(commandHandler) {}
+            static Request createRegisterNodeRequest(RegisterNodeInfo_t nodeInfo, ICommandHandler& commandHandler);
+            static Request createSensorDataUploadRequest(SensorReading_t reading, ICommandHandler& commandHandler);
+            void handleResponse(int statusCode, String responseBody);
             void queue();
             bool send();
 
@@ -44,6 +57,7 @@ namespace WebUtils {
             String endpoint;
             String method;
             String jsonPayload;
+            ICommandHandler& commandHandler;
     };
 
 }
